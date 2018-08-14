@@ -25,11 +25,13 @@ How to use this?
 
 2. Install [Teensyduino](https://www.pjrc.com/teensy/td_download.html) package.
 
-3. Select Board type: Teensy 3.6 and USB Type: Keyboard. Upload the sketch.
+3. Use [my patched version](https://github.com/gdsports/USBHost_t36) of the PJRC USBHost_t36 library. This is required so the sketch can get the raw HID keyboard report.
 
-4. Plug your USB keyboard to the USB Host shield
+4. Select Board type: Teensy 3.6 and USB Type: Keyboard. Upload the sketch.
 
-5. Done! Happy keyboard hacking :)
+5. Plug your USB keyboard to the USB Host shield
+
+6. Done! Happy keyboard hacking :)
 
 ### Leonardo or Teensy 2
 1. Stack the USB Host Shield on top of Arduino Leonardo, for Teensy, soldering work is required, you may refer to [this page](http://forum.colemak.com/viewtopic.php?id=1561)
