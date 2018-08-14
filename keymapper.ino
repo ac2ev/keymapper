@@ -12,19 +12,27 @@
   Ctrl-Shift 7 => Workman
 */
 
+#ifdef __MK66FX1M0__
+/* Teensy 3.6 */
+#define TEENSY_USB_HOST 1
+#endif
+
 #include <avr/pgmspace.h>
+#ifdef TEENSY_USB_HOST
+#include <USBHost_t36.h>
+#else
 #include <Usb.h>
 #include <hidboot.h>
+#endif
 #include <Keyboard.h>
 
 #include "keymapper_game.h"
 
-#define DEBUG
+//#define DEBUG
 #define modeLED LED_BUILTIN
 
-
 // function definitions
-bool HandleReservedKeystrokes(USBHID *hid, uint8_t *buf);
+bool HandleReservedKeystrokes(uint8_t *buf);
 inline void SendKeysToHost (uint8_t *buf);
 void play_word_game(void);
 inline void LatchKey (uint8_t keyToLatch);
@@ -75,19 +83,23 @@ uint8_t KeyBuffer[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 uint8_t specialKeyLatch = 0;
 bool specialKeyLatchReleased = false;
 
-
-class KbdRptParser : public KeyboardReportParser
+void print_hex(const uint8_t *buf, size_t len)
 {
-  protected:
-    virtual void Parse(USBHID *hid, bool is_rpt_id, uint8_t len, uint8_t *buf);
-};
+#ifdef DEBUG
+  for (size_t i = 0; i < 8; i++) {
+    if (i) Serial.print(' ');
+    Serial.print(buf[i], HEX);
+  }
+  Serial.println();
+#endif
+}
 
 
 // *******************************************************************************************
 // Parse
 // *******************************************************************************************
 
-void KbdRptParser::Parse(USBHID *hid, bool is_rpt_id, uint8_t len, uint8_t *buf)
+void remapper(uint8_t *buf, uint8_t len)
 {
   uint8_t i;
 
@@ -95,17 +107,11 @@ void KbdRptParser::Parse(USBHID *hid, bool is_rpt_id, uint8_t len, uint8_t *buf)
   if (buf[2] == 1)
     return;
 
-  // for (uint8_t i=0; i<8; i++)
-  // {
-  //   PrintHex(buf[i]);
-  //   Serial.print(" ");
-  // }
-  // Serial.println("");
-
+  print_hex(buf, len);
   KeyBuffer[0] = buf[0];
 
 
-  if (!HandleReservedKeystrokes(hid, buf))
+  if (!HandleReservedKeystrokes(buf))
   {
     specialKeyLatchReleased = true;
 
@@ -138,10 +144,6 @@ void KbdRptParser::Parse(USBHID *hid, bool is_rpt_id, uint8_t len, uint8_t *buf)
         else
           KeyBuffer[i] = buf[i];
       }
-
-
-      // check locking keys
-      HandleLockingKeys(hid, KeyBuffer[i]);
     }
 
     // reset latch if key is released
@@ -154,20 +156,12 @@ void KbdRptParser::Parse(USBHID *hid, bool is_rpt_id, uint8_t len, uint8_t *buf)
     // send out key press
     SendKeysToHost (KeyBuffer);
 
-    // for (uint8_t i=0; i<8; i++)
-    // {
-    //   PrintHex(KeyBuffer[i]);
-    //   Serial.print(" ");
-    // }
-    // Serial.println("");
-    // Serial.println("");
-
+    print_hex(KeyBuffer, 8);
   }
+}
 
-};
 
-
-bool HandleReservedKeystrokes(USBHID *hid, uint8_t *buf) // return true if it is a reserved keystroke
+bool HandleReservedKeystrokes(uint8_t *buf) // return true if it is a reserved keystroke
 {
   uint8_t mod = buf[0];       // read the modifier byte
 
@@ -258,9 +252,9 @@ inline void SendKeysToHost (uint8_t *buf)
   Keyboard.set_key5(buf[6]);
   Keyboard.set_key6(buf[7]);
   Keyboard.send_now();
-#else
+#else /* TEENSYDUINO */
   HID().SendReport(2, buf, 8);
-#endif
+#endif /* TEENSYDUINO */
 
 }
 
@@ -332,20 +326,41 @@ void play_word_game(void)
   Keyboard.println( "" );
 }
 
+#ifdef TEENSY_USB_HOST
+USBHost Usb;
+KeyboardController keyboard_in(Usb);
 
+/*
+  Key remap possiblities
+    Swap LeftCtrl and CapsLock. Put CapsLock in the corner where it belongs!
+    Switchable QWERTY, Dvorak, and colemak keyboard layouts
+    Hardware key macros
+    Remappings and macros that work even in BIOS and recovery mode.
+    Remappings and macros that work with KVMs and game consoles.
+*/
+void reportReader(uint8_t report[8])
+{
+  remapper(report, 8);
+}
+#else /* TEENSY_USB_HOST */
+class KbdRptParser : public KeyboardReportParser
+{
+  protected:
+    virtual void Parse(USBHID *hid, bool is_rpt_id, uint8_t len, uint8_t *buf);
+};
 
-
-
+void KbdRptParser::Parse(USBHID *hid, bool is_rpt_id, uint8_t len, uint8_t *buf)
+{
+  remapper(buf, len);
+  // Run parent class method so keyboard LEDs are updated.
+  KeyboardReportParser::Parse(hid, is_rpt_id, len, buf);
+};
 
 USB     Usb;
 //USBHub     Hub(&Usb);
 HIDBoot<USB_HID_PROTOCOL_KEYBOARD>    ExtKeyboard(&Usb);
-
-uint32_t next_time;
-
 KbdRptParser Prs;
-
-
+#endif /* TEENSY_USB_HOST */
 
 void setup()
 {
@@ -362,6 +377,10 @@ void setup()
   Serial.println("Start");
 #endif
 
+#ifdef TEENSY_USB_HOST
+  Usb.begin();
+  keyboard_in.attachReportReader(reportReader);
+#else
   if (Usb.Init() == -1)
 
 #ifdef DEBUG
@@ -372,9 +391,8 @@ void setup()
 
   delay( 200 );
 
-  next_time = millis() + 5000;
-
   ExtKeyboard.SetReportParser(0, (HIDReportParser*)&Prs);
+#endif
 }
 
 void loop()
