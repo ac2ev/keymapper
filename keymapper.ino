@@ -328,7 +328,7 @@ void play_word_game(void)
 
 #ifdef TEENSY_USB_HOST
 USBHost Usb;
-KeyboardController keyboard_in(Usb);
+KeyboardController keyboard_in(Usb, true);
 
 /*
   Key remap possiblities
